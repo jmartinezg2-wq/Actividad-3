@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sistema de nómina</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <header class="top">
+    <h1>Sistema de nómina</h1>
+    <p>Calcula el pago neto según el tipo de contrato.</p>
+  </header>
+
+  <main>
+    <section class="panel" aria-labelledby="form-title">
+      <h2 id="form-title">Agregar empleado</h2>
+      <form id="employee-form">
+        <label class="field"><span>Tipo de empleado</span><select id="type" name="type"></select></label>
+        <label class="field"><span>Nombre</span><input name="name" type="text" required></label>
+        <label class="field"><span>Años en la empresa</span>
+          <input name="yearsOfService" type="number" min="0" step="any" value="0" required></label>
+        <div id="dynamic-fields"></div>
+        <p id="error" class="error" role="alert" hidden></p>
+        <div class="actions">
+          <button type="submit" class="primary">Agregar empleado</button>
+          <button type="button" id="load-samples">Cargar ejemplos</button>
+          <button type="button" id="clear">Vaciar lista</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="panel" aria-labelledby="res-title">
+      <div class="res-head">
+        <h2 id="res-title">Desprendibles</h2>
+        <p class="total">Total neto <strong id="total">$ 0</strong></p>
+      </div>
+      <div id="results" class="grid" aria-live="polite"></div>
+    </section>
+  </main>
+
+  <script type="module" src="js/ui.js"></script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+{
+  "name": "nomina-poo",
+  "version": "1.0.0",
+  "description": "Sistema de nómina con POO en JavaScript (Actividad Unidad 3)",
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "start": "npx serve ."
+  },
+  "license": "MIT"
+}
