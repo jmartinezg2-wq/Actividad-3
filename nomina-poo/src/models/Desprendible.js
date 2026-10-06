@@ -1,8 +1,4 @@
-/**
- * @file Desprendible.js
- * @description Representa el desprendible de nómina (resultado de la liquidación).
- * Objeto inmutable de valor con el desglose transparente de haberes y deducciones.
- */
+import { validarNumeroNoNegativo } from '../validation/validaciones.js';
 
 export class Desprendible {
   constructor({
@@ -17,23 +13,32 @@ export class Desprendible {
     this.id = id;
     this.fecha = fecha;
     this.empleado = empleado;
-    this.salarioBruto = salarioBruto;
+    this.salarioBruto = validarNumeroNoNegativo(salarioBruto, 'El salario bruto');
     this.bonos = bonos;
     this.beneficios = beneficios;
     this.deducciones = deducciones;
 
-    this.totalBonos = this.bonos.reduce((acc, b) => acc + b.valor, 0);
-    this.totalBeneficios = this.beneficios.reduce((acc, b) => acc + b.valor, 0);
-    this.totalDevengado = this.salarioBruto + this.totalBonos + this.totalBeneficios;
+    this.totalBonos = this.#sumarConceptos(bonos);
+    this.totalBeneficios = this.#sumarConceptos(beneficios);
+    this.totalSalarial = this.salarioBruto + this.totalBonos;
+    this.totalDevengado = this.totalSalarial;
+    this.totalCompensacion = this.totalSalarial + this.totalBeneficios;
+    this.totalDeducciones = this.#sumarConceptos(deducciones);
+    this.salarioNeto = this.totalSalarial - this.totalDeducciones;
 
-    this.totalDeducciones = this.deducciones.reduce((acc, d) => acc + d.valor, 0);
-
-    const neto = this.totalDevengado - this.totalDeducciones;
-    if (neto < 0) {
-      throw new Error(`El salario neto no puede ser negativo. Devengado: $${this.totalDevengado}, Deducciones: $${this.totalDeducciones}`);
+    // El bono de alimentación lo cubre la empresa: se informa, pero no aumenta el neto pagado.
+    if (this.salarioNeto < 0) {
+      throw new Error(
+        `El salario neto no puede ser negativo. Total salarial: $${this.totalSalarial}, deducciones: $${this.totalDeducciones}.`
+      );
     }
+  }
 
-    this.salarioNeto = neto;
+  #sumarConceptos(conceptos) {
+    return conceptos.reduce(
+      (total, concepto) => total + validarNumeroNoNegativo(concepto.valor, `El valor de ${concepto.concepto}`),
+      0
+    );
   }
 
   toJSON() {
@@ -46,7 +51,9 @@ export class Desprendible {
       totalBonos: this.totalBonos,
       beneficios: this.beneficios,
       totalBeneficios: this.totalBeneficios,
+      totalSalarial: this.totalSalarial,
       totalDevengado: this.totalDevengado,
+      totalCompensacion: this.totalCompensacion,
       deducciones: this.deducciones,
       totalDeducciones: this.totalDeducciones,
       salarioNeto: this.salarioNeto

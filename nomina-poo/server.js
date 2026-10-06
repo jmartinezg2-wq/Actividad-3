@@ -1,137 +1,153 @@
-/**
- * @file server.js
- * @description Servidor Backend con Node.js y Express para el Sistema de Nómina POO.
- * Expone la API REST y sirve la interfaz web de usuario.
- */
-
-import express from 'express';
-import cors from 'cors';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import { createServer } from 'node:http';
+import { readFile, stat } from 'node:fs/promises';
+import { extname, join, normalize, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { GestorEmpleados } from './src/services/GestorEmpleados.js';
 import { CalculadoraNomina } from './src/services/CalculadoraNomina.js';
 import { EmpleadoFactory } from './src/models/EmpleadoFactory.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const ROOT = fileURLToPath(new URL('.', import.meta.url));
+const tiposContenido = new Map([
+  ['.html', 'text/html; charset=utf-8'],
+  ['.css', 'text/css; charset=utf-8'],
+  ['.js', 'text/javascript; charset=utf-8'],
+  ['.json', 'application/json; charset=utf-8']
+]);
 
-const app = express();
-const PORT = process.env.PORT || 3000;
+function responderJson(respuesta, estado, contenido) {
+  respuesta.writeHead(estado, { 'Content-Type': 'application/json; charset=utf-8' });
+  respuesta.end(JSON.stringify(contenido));
+}
 
-// Middlewares
-app.use(cors());
-app.use(express.json());
-app.use(express.static(__dirname));
-
-// Servicios de Dominio
-const calculadora = new CalculadoraNomina();
-const gestor = new GestorEmpleados(calculadora);
-
-// =========================================================================
-// RUTAS API REST
-// =========================================================================
-
-/**
- * GET /api/nomina
- * Retorna el listado de empleados registrados y la nómina consolidada.
- */
-app.get('/api/nomina', (req, res) => {
-  try {
-    const liquidacion = gestor.liquidarNomina();
-    res.json({
-      ok: true,
-      data: liquidacion
-    });
-  } catch (error) {
-    res.status(500).json({ ok: false, error: error.message });
+async function leerJson(solicitud) {
+  const partes = [];
+  let bytes = 0;
+  for await (const parte of solicitud) {
+    bytes += parte.length;
+    if (bytes > 100000) throw new Error('La solicitud supera el tamaño permitido.');
+    partes.push(parte);
   }
-});
-
-/**
- * POST /api/empleados
- * Agrega un nuevo empleado y retorna su desprendible liquidado.
- */
-app.post('/api/empleados', (req, res) => {
   try {
-    const empleado = gestor.agregarEmpleado(req.body);
-    const desprendible = calculadora.liquidarEmpleado(empleado);
-    const consolidado = gestor.liquidarNomina();
-
-    res.status(201).json({
-      ok: true,
-      mensaje: 'Empleado agregado exitosamente',
-      desprendible,
-      consolidado
-    });
-  } catch (error) {
-    res.status(400).json({
-      ok: false,
-      error: error.message
-    });
+    return JSON.parse(Buffer.concat(partes).toString('utf8') || '{}');
+  } catch {
+    throw new Error('El cuerpo de la solicitud debe ser JSON válido.');
   }
-});
+}
 
-/**
- * POST /api/simular
- * Liquida un empleado temporalmente para simulación sin almacenarlo en memoria.
- */
-app.post('/api/simular', (req, res) => {
-  try {
-    const empleado = EmpleadoFactory.crearEmpleado(req.body);
-    const desprendible = calculadora.liquidarEmpleado(empleado);
-
-    res.json({
-      ok: true,
-      desprendible
-    });
-  } catch (error) {
-    res.status(400).json({
-      ok: false,
-      error: error.message
-    });
+function manejarApi(solicitud, respuesta, ruta, gestor) {
+  if (solicitud.method === 'GET' && ruta === '/api/nomina') {
+    responderJson(respuesta, 200, { ok: true, data: gestor.liquidarNomina() });
+    return true;
   }
-});
-
-/**
- * POST /api/ejemplos
- * Carga empleados de ejemplo con todos los casos de negocio de la actividad.
- */
-app.post('/api/ejemplos', (req, res) => {
-  try {
-    const liquidacion = gestor.cargarEjemplos();
-    res.json({
-      ok: true,
-      mensaje: 'Ejemplos cargados correctamente',
-      data: liquidacion
-    });
-  } catch (error) {
-    res.status(500).json({ ok: false, error: error.message });
-  }
-});
-
-/**
- * DELETE /api/empleados
- * Vacia la lista de empleados.
- */
-app.delete('/api/empleados', (req, res) => {
-  try {
+  if (solicitud.method === 'DELETE' && ruta === '/api/empleados') {
     gestor.vaciar();
-    res.json({
+    responderJson(respuesta, 200, { ok: true, data: gestor.liquidarNomina() });
+    return true;
+  }
+  if (solicitud.method === 'POST' && ruta === '/api/ejemplos') {
+    responderJson(respuesta, 200, { ok: true, data: gestor.cargarEjemplos() });
+    return true;
+  }
+  return false;
+}
+
+async function manejarApiConCuerpo(
+  solicitud,
+  respuesta,
+  ruta,
+  { gestor, calculadora, creadorEmpleado }
+) {
+  if (ruta !== '/api/empleados' && ruta !== '/api/simular') {
+    return false;
+  }
+  const datos = await leerJson(solicitud);
+  if (ruta === '/api/empleados') {
+    const empleado = gestor.agregarEmpleado(datos);
+    responderJson(respuesta, 201, {
       ok: true,
-      mensaje: 'Lista de empleados vaciada correctamente',
-      data: gestor.liquidarNomina()
+      desprendible: calculadora.liquidarEmpleado(empleado),
+      consolidado: gestor.liquidarNomina()
+    });
+    return true;
+  }
+  if (ruta === '/api/simular') {
+    const empleado = creadorEmpleado(datos);
+    responderJson(respuesta, 200, { ok: true, desprendible: calculadora.liquidarEmpleado(empleado) });
+    return true;
+  }
+  return false;
+}
+
+async function servirArchivo(respuesta, ruta) {
+  const solicitada = ruta === '/' ? 'index.html' : decodeURIComponent(ruta.slice(1));
+  const relativa = normalize(solicitada).replace(/^(\.\.[/\\])+/, '');
+  const archivo = join(ROOT, relativa);
+
+  if (!archivo.startsWith(ROOT)) {
+    responderJson(respuesta, 403, { ok: false, error: 'Ruta no permitida.' });
+    return;
+  }
+
+  try {
+    const datosArchivo = await readFile(archivo);
+    const informacion = await stat(archivo);
+    if (!informacion.isFile()) throw new Error('No es un archivo');
+    respuesta.writeHead(200, { 'Content-Type': tiposContenido.get(extname(archivo)) || 'application/octet-stream' });
+    respuesta.end(datosArchivo);
+  } catch {
+    responderJson(respuesta, 404, { ok: false, error: 'Recurso no encontrado.' });
+  }
+}
+
+export function crearServidor({ tasaARL, tasaSeguridadSocialPension } = {}) {
+  const calculadora = new CalculadoraNomina({ tasaARL, tasaSeguridadSocialPension });
+  const creadorEmpleado = (datos) => EmpleadoFactory.crearEmpleado(datos);
+  const gestor = new GestorEmpleados({ calculadora, creadorEmpleado });
+
+  return createServer(async (solicitud, respuesta) => {
+    try {
+      const ruta = new URL(
+        solicitud.url,
+        `http://${solicitud.headers.host || 'localhost'}`
+      ).pathname;
+      if (ruta.startsWith('/api/')) {
+        if (manejarApi(solicitud, respuesta, ruta, gestor)) return;
+        if (solicitud.method === 'POST' && await manejarApiConCuerpo(
+          solicitud,
+          respuesta,
+          ruta,
+          { gestor, calculadora, creadorEmpleado }
+        )) return;
+        responderJson(respuesta, 404, { ok: false, error: 'Ruta de API no encontrada.' });
+        return;
+      }
+      if (solicitud.method !== 'GET') {
+        responderJson(respuesta, 405, { ok: false, error: 'Método no permitido.' });
+        return;
+      }
+      await servirArchivo(respuesta, ruta);
+    } catch (error) {
+      responderJson(respuesta, 400, { ok: false, error: error.message });
+    }
+  });
+}
+
+const esEjecucionDirecta = process.argv[1]
+  && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (esEjecucionDirecta) {
+  try {
+    const puerto = Number(process.env.PORT ?? 3000);
+    if (!Number.isInteger(puerto) || puerto < 1 || puerto > 65535) {
+      throw new Error('PORT debe ser un entero entre 1 y 65535.');
+    }
+    const servidor = crearServidor({ tasaARL: process.env.TASA_ARL });
+    servidor.listen(puerto, () => {
+      console.log(`Sistema de nómina disponible en http://localhost:${puerto}`);
     });
   } catch (error) {
-    res.status(500).json({ ok: false, error: error.message });
+    console.error(`No se pudo iniciar el servidor: ${error.message}`);
+    process.exitCode = 1;
   }
-});
-
-// Inicialización del servidor
-app.listen(PORT, () => {
-  console.log(`====================================================`);
-  console.log(`🚀 Sistema de Nómina POO iniciado`);
-  console.log(`📍 Servidor en: http://localhost:${PORT}`);
-  console.log(`📑 API REST:    http://localhost:${PORT}/api/nomina`);
-  console.log(`====================================================`);
-});
+}
