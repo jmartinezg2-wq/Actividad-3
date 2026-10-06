@@ -85,3 +85,5 @@ button.primary:hover { filter: brightness(1.08); }
 .minus { color: var(--bad); }
 .strong { font-weight: 600; border-top: 1px solid var(--line); padding-top: 4px; margin-top: 4px; }
 .net { font-weight: 700; font-size: 1.1rem; border-top: 2px solid var(--purple); padding-top: 6px; margin-top: 6px; }
+
+.benefit { color: var(--blue); }
