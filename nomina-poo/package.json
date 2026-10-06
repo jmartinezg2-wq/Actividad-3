@@ -1,16 +1,15 @@
 {
   "name": "nomina-poo",
   "version": "1.0.0",
-  "description": "Sistema de nómina con POO en JavaScript (Actividad Unidad 3)",
+  "description": "Sistema de nómina con POO, SOLID y JavaScript ES modules",
   "type": "module",
   "scripts": {
     "test": "node --test",
     "start": "node server.js",
     "dev": "node --watch server.js"
   },
-  "license": "MIT",
-  "dependencies": {
-    "cors": "^2.8.6",
-    "express": "^5.2.1"
-  }
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT"
 }
